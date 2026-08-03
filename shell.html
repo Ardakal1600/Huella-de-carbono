@@ -1,130 +1,175 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="utf-8">
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Calculadora de Huella de Carbono</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Calculadora Huella de Carbono</title>
+    <!-- Librería para generar código QR -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
-        * { box-sizing: border-box; }
-        body {
+        * {
+            box-sizing: border-box;
             margin: 0;
             padding: 0;
+        }
+        body {
             background-color: #1a1a1a;
+            color: #ffffff;
             font-family: Arial, sans-serif;
             display: flex;
-            justify-content: center;
+            flex-direction: column;
             align-items: center;
-            height: 100vh;
+            justify-content: center;
+            min-height: 100vh;
             overflow: hidden;
         }
 
         #game-container {
             position: relative;
-            width: 800px;
-            height: 600px;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         canvas.emscripten {
             border: 0px none;
-            background-color: black;
-            width: 800px;
-            height: 600px;
+            background-color: #000;
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        /* Overlay para ingresar el nombre */
+        #input-container {
+            position: absolute;
+            top: 20%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            z-index: 10;
         }
 
         #nombreInput {
-            position: absolute;
-            top: 230px;
-            left: 250px;
-            width: 300px;
-            height: 45px;
+            padding: 12px 20px;
             font-size: 18px;
-            text-align: center;
-            border: 2px solid #2ecc71;
             border-radius: 8px;
+            border: 2px solid #4CAF50;
             outline: none;
-            z-index: 9999;
-            background-color: #ffffff;
-            color: #000000;
-            display: block;
+            text-align: center;
+            width: 280px;
+        }
+
+        /* Contenedor del Código QR */
+        #qr-container {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 5;
+        }
+
+        #qr-text {
+            color: #000;
+            font-size: 10px;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+
+        @media (max-width: 600px) {
+            #qr-container {
+                bottom: 10px;
+                right: 10px;
+                transform: scale(0.8);
+            }
         }
     </style>
 </head>
 <body>
 
     <div id="game-container">
-        <input type="text" id="nombreInput" placeholder="Escribe tu nombre aquí" oninput="window.enviarNombreACS()" />
+        <!-- Entrada para el nombre -->
+        <div id="input-container">
+            <input type="text" id="nombreInput" placeholder="Ingresa tu nombre..." oninput="EnviarNombreAC()">
+        </div>
+
+        <!-- Canvas donde dibuja Raylib -->
         <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+
+        <!-- Código QR -->
+        <div id="qr-container">
+            <div id="qrcode"></div>
+            <span id="qr-text">Escanea para abrir</span>
+        </div>
     </div>
 
     <script type="text/javascript">
         var Module = {
             preRun: [],
             postRun: [],
-            print: function(text) { console.log(text); },
-            printErr: function(text) { console.error(text); },
+            print: (function() { return function(text) { console.log(text); }; })(),
             canvas: (function() {
                 var canvas = document.getElementById('canvas');
                 return canvas;
             })()
         };
 
-        // PERMITIR BORRAR Y ESCRIBIR SIN INTERFERENCIA DE RAYLIB
-        var inputEl = document.getElementById('nombreInput');
-        inputEl.addEventListener('keydown', function(e) {
-            e.stopPropagation(); // Evita que Raylib bloquee Backspace, Supr o las flechas
-        });
-
-        window.enviarNombreACS = function() {
-            var input = document.getElementById('nombreInput');
-            if (input && Module.ccall) {
-                Module.ccall(
-                    'ActualizarNombreDesdeJS',
-                    null,
-                    ['string'],
-                    [input.value]
-                );
+        // 1. Enviar nombre tipeado al entorno C
+        function EnviarNombreAC() {
+            var nombre = document.getElementById('nombreInput').value;
+            if (Module._ActualizarNombreDesdeJS) {
+                var ptr = allocateUTF8(nombre);
+                Module._ActualizarNombreDesdeJS(ptr);
+                _free(ptr);
             }
-        };
+        }
 
-        window.ocultarInputNombre = function() {
-            window.enviarNombreACS();
-            var input = document.getElementById('nombreInput');
-            if (input) {
-                input.style.visibility = 'hidden';
-                input.style.display = 'none';
-                input.blur();
+        // 2. Ocultar el Input cuando se presione comenzar
+        function OcultarInputNombre() {
+            var container = document.getElementById('input-container');
+            if (container) {
+                container.style.display = 'none';
             }
-        };
+        }
 
-        window.mostrarInputNombre = function() {
-            var input = document.getElementById('nombreInput');
-            if (input) {
-                input.style.visibility = 'visible';
-                input.style.display = 'block';
-                input.value = '';
-                input.focus();
-            }
-        };
+        // 3. Enviar datos a Google Sheets usando fetch sin bloqueo CORS
+        function EnviarAGoogleSheets(nombre, huella) {
+            var webAppUrl = "https://script.google.com/macros/s/AKfycbx_TU_URL_AQUI/exec"; // Reemplaza por tu URL activa de Apps Script
 
-        window.EnviarAGoogleSheets = function(nombre, huella) {
-            var scriptURL = 'https://script.google.com/macros/s/AKfycbzGZEtKpJdke6KQBsI36mmPripein90GKFgeL6Q1IcwOnr0eBsAdhA7pqWG_PceojIXcA/exec';
-            
-            var formData = new FormData();
-            formData.append('nombre', nombre);
-            formData.append('huella', huella);
+            var payload = {
+                nombre: nombre,
+                huella: huella
+            };
 
-            fetch(scriptURL, {
-                method: 'POST',
-                mode: 'no-cors',
-                body: formData
-            })
-            .then(function() { 
-                console.log('Enviado correctamente a Google Sheets'); 
-            })
-            .catch(function(error) { 
-                console.error('Error enviando a Sheets:', error); 
+            fetch(webAppUrl, {
+                method: "POST",
+                mode: "no-cors",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            }).then(function() {
+                console.log("Datos enviados a Google Sheets con éxito.");
+            }).catch(function(err) {
+                console.error("Error al enviar datos:", err);
             });
-        };
+        }
+
+        // 4. Generar Código QR del sitio web automáticamente
+        window.addEventListener('load', function() {
+            new QRCode(document.getElementById("qrcode"), {
+                text: window.location.href,
+                width: 80,
+                height: 80
+            });
+        });
     </script>
     {{{ SCRIPT }}}
 </body>
