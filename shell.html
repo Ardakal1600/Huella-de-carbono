@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Calculadora de Huella de Carbono</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #game-container {
+            position: relative;
+            width: 800px;
+            height: 600px;
+        }
+
+        canvas.emscripten {
+            border: 0px none;
+            background-color: black;
+            width: 800px;
+            height: 600px;
+        }
+
+        #nombreInput {
+            position: absolute;
+            top: 230px;
+            left: 250px;
+            width: 300px;
+            height: 45px;
+            font-size: 18px;
+            text-align: center;
+            border: 2px solid #2ecc71;
+            border-radius: 8px;
+            outline: none;
+            z-index: 9999;
+            background-color: #ffffff;
+            color: #000000;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <input type="text" id="nombreInput" placeholder="Escribe tu nombre aquí" oninput="window.enviarNombreACS()" />
+        <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+    </div>
+
+    <script type="text/javascript">
+        var Module = {
+            preRun: [],
+            postRun: [],
+            print: function(text) { console.log(text); },
+            printErr: function(text) { console.error(text); },
+            canvas: (function() {
+                var canvas = document.getElementById('canvas');
+                return canvas;
+            })()
+        };
+
+        // PERMITIR BORRAR Y ESCRIBIR SIN INTERFERENCIA DE RAYLIB
+        var inputEl = document.getElementById('nombreInput');
+        inputEl.addEventListener('keydown', function(e) {
+            e.stopPropagation(); // Evita que Raylib bloquee Backspace, Supr o las flechas
+        });
+
+        window.enviarNombreACS = function() {
+            var input = document.getElementById('nombreInput');
+            if (input && Module.ccall) {
+                Module.ccall(
+                    'ActualizarNombreDesdeJS',
+                    null,
+                    ['string'],
+                    [input.value]
+                );
+            }
+        };
+
+        window.ocultarInputNombre = function() {
+            window.enviarNombreACS();
+            var input = document.getElementById('nombreInput');
+            if (input) {
+                input.style.visibility = 'hidden';
+                input.style.display = 'none';
+                input.blur();
+            }
+        };
+
+        window.mostrarInputNombre = function() {
+            var input = document.getElementById('nombreInput');
+            if (input) {
+                input.style.visibility = 'visible';
+                input.style.display = 'block';
+                input.value = '';
+                input.focus();
+            }
+        };
+
+        window.EnviarAGoogleSheets = function(nombre, huella) {
+            var scriptURL = 'https://script.google.com/macros/s/AKfycbzGZEtKpJdke6KQBsI36mmPripein90GKFgeL6Q1IcwOnr0eBsAdhA7pqWG_PceojIXcA/exec';
+            
+            var formData = new FormData();
+            formData.append('nombre', nombre);
+            formData.append('huella', huella);
+
+            fetch(scriptURL, {
+                method: 'POST',
+                mode: 'no-cors',
+                body: formData
+            })
+            .then(function() { 
+                console.log('Enviado correctamente a Google Sheets'); 
+            })
+            .catch(function(error) { 
+                console.error('Error enviando a Sheets:', error); 
+            });
+        };
+    </script>
+    {{{ SCRIPT }}}
+</body>
+</html>
